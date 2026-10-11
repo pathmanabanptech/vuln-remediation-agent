@@ -13,13 +13,19 @@ services:
       # The bridge has no auth and defaults to CORS "*", letting any website you visit drive
       # the agent through your browser. There is no browser client, so allow no foreign origins.
       - CORS_ORIGINS=http://localhost:8000
+      # Required by api-guard: callers must send "Authorization: Bearer <token>".
+      - AGENT_API_TOKEN=${AGENT_API_TOKEN}
     volumes:
       - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # api-guard owns port 8000 and authenticates every request; the bridge listens only on
+    # 127.0.0.1:8001 inside the container, so it cannot be reached around the guard.
     command: >
-      /bin/sh -c "ollama-mcp-bridge 
-      --config /app/mcp-config.json 
-      --port 8000 
+      /bin/sh -c "exec node /app/api-guard/api-guard.js --
+      ollama-mcp-bridge
+      --config /app/mcp-config.json
+      --host 127.0.0.1
+      --port 8001
       --system-prompt \"$(cat /app/agent_prompt.md)\""
 

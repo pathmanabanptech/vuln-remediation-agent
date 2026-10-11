@@ -52,10 +52,12 @@ The agent operates on a **Observe-Orient-Decide-Act (OODA)** loop:
     *Note: For Apple Silicon users, it is recommended to run Ollama locally to take advantage of Metal GPU acceleration, while the **vuln-remediation-agent** runs containerized via Docker Compose.*
 2. **Configuration**
 
-    Copy `.env.example` to `.env` in the root directory and add your token:
+    Copy `.env.example` to `.env` in the root directory, add your GitHub token, and generate an API token (`openssl rand -hex 32`) that callers of the agent must present:
     ```
     GITHUB_TOKEN=your_fine_grained_pat_here
+    AGENT_API_TOKEN=output_of_openssl_rand_hex_32
     ```
+    The agent refuses to start without an `AGENT_API_TOKEN` of at least 32 characters.
   
 3. **Launch the Agent**
     - Launch llama on your mac: `ollama run llama3.1`
@@ -69,9 +71,10 @@ The agent operates on a **Observe-Orient-Decide-Act (OODA)** loop:
         # Verify the agent
         docker logs -f vuln-remediation-agent
         ```
-    - Test your Agent (or run `./test-agent.sh`)
+    - Test your Agent (or run `bash test-agent.sh`, which reads the token from `.env`)
         ```
         curl -X POST http://localhost:8000/api/chat \
+            -H "Authorization: Bearer $AGENT_API_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
                 "model": "llama3.1",
@@ -98,12 +101,10 @@ This project was built with Finance and Healthcare grade privacy in mind. By usi
 - **Trivy (least privilege):** only vulnerability scans (`scanType: ["vuln"]`) of `my-demo-app`, plus reading the findings. Remote repository and image scans are blocked, and symlinks are resolved so a scan can't escape the project directory.
 
 **Hardening in place:**
-- The API listens on `127.0.0.1:8000` only, and CORS is restricted so websites you visit cannot drive the agent through your browser.
+- The API is fronted by [`api-guard`](./api-guard/api-guard.js), which requires `Authorization: Bearer $AGENT_API_TOKEN` on every request and rejects unexpected `Host` headers (blocking DNS-rebinding attacks from websites). The bridge itself listens only inside the container, so it cannot be reached around the guard.
+- The API is published on `127.0.0.1:8000` only, and CORS is restricted so websites you visit cannot drive the agent through your browser.
 - The GitHub token is passed only to the GitHub MCP server; Trivy never sees it.
 - Trivy, the Trivy MCP plugin, the GitHub MCP server and the bridge are version-pinned; Trivy and its plugin are verified against published SHA-256 checksums at build time.
 - `.dockerignore` keeps `.env` and other local secrets out of the image.
-
-**Known limitation:** the bridge API has no authentication, so any process on the host can call it. Do not expose port 8000 beyond localhost.
-
 ## License
 MIT - Clean-room implementation for demonstration purposes.
