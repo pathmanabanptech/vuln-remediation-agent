@@ -1,18 +1,20 @@
 services:
   # The "Agent": MCP Bridge + Trivy + GitHub Tools
-  llama-security-agent:
+  vuln-remediation-agent:
     build: .
-    container_name: llama-security-agent
+    container_name: vuln-remediation-agent
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_HOST=http://host.docker.internal:11434
       - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN} # Loaded from your local .env file
+      # The bridge has no auth and defaults to CORS "*", letting any website you visit drive
+      # the agent through your browser. There is no browser client, so allow no foreign origins.
+      - CORS_ORIGINS=http://localhost:8000
     volumes:
       - .:/app
-      - /var/run/docker.sock:/var/run/docker.sock # Allows Trivy to scan host images
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >

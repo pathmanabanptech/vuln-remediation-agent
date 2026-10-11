@@ -1,0 +1,31 @@
+# Secrets: never bake into the image
+.env
+.env.*
+!.env.example
+*.token
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+.npmrc
+.netrc
+.aws/
+.ssh/
+.docker/
+
+# VCS & dependencies (installed inside the image)
+.git
+**/node_modules
+**/dist
+
+# Logs & local data
+*.log
+**/npm-debug.log*
+logs/
+ollama_data/
+*.bin
+*.gguf
+.DS_Store

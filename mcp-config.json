@@ -1,12 +1,47 @@
- {
+{
+    "_comment": [
+        "TOOL ALLOWLISTS ARE SECURITY CONTROLS, not conveniences. Both MCP servers are wrapped by mcp-guard/mcp-guard.js, which hides",
+        "and rejects every tool not in the server's policy (mcp-guard/policies/*.js) and checks arguments. toolFilter is a second layer",
+        "applied by ollama-mcp-bridge. Do not widen either list without a security review.",
+        "GitHub = HUMAN-IN-THE-LOOP ENFORCEMENT: the agent may only read files, create a security/fix-* branch, commit to it, and open a",
+        "pull request; a human must review and merge. agent_prompt.md's instruction to 'open a PR' is NOT a control: an LLM can ignore it.",
+        "@modelcontextprotocol/server-github has no allowlist of its own; the guard blocks merge_pull_request, push_files [force-pushes],",
+        "fork/create repository, etc., and any write to a branch outside security/fix-*.",
+        "Trivy = LEAST PRIVILEGE: only vulnerability scans of MCP_GUARD_SCAN_ROOT. scan_repository and scan_image (arbitrary remote fetches)",
+        "are blocked, as are scans of other paths and the secret/misconfig/license scanners."
+    ],
     "mcpServers": {
         "trivy": {
-            "command": "npx",
-            "args": ["-y", "@aquasecurity/mcp-server-trivy"]
+            "_comment": "Official Trivy MCP plugin (aquasecurity/trivy-mcp); version pinned and checksum-verified in the Dockerfile. The npm package previously referenced here (@aquasecurity/mcp-server-trivy) does not exist.",
+            "command": "node",
+            "args": [
+                "mcp-guard/mcp-guard.js", "trivy",
+                "--",
+                "trivy", "mcp", "--transport", "stdio"
+            ],
+            "env": {
+                "MCP_GUARD_SCAN_ROOT": "${workspaceFolder}/my-demo-app"
+            },
+            "toolFilter": {
+                "mode": "include",
+                "tools": ["scan_filesystem", "findings_list", "findings_get", "trivy_version"]
+            }
         },
         "github": {
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-github"]
+            "command": "node",
+            "args": [
+                "mcp-guard/mcp-guard.js", "github",
+                "--",
+                "npx", "-y", "@modelcontextprotocol/server-github@2025.4.8"
+            ],
+            "_comment_env": "The bridge passes MCP servers only HOME/PATH/etc., so the token must be forwarded explicitly, to this server only (Trivy never sees it).",
+            "env": {
+                "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+            },
+            "toolFilter": {
+                "mode": "include",
+                "tools": ["get_file_contents", "create_branch", "create_or_update_file", "create_pull_request"]
+            }
         }
     }
 }
