@@ -6,7 +6,7 @@
 // header from API_GUARD_ALLOWED_HOSTS (blocks DNS rebinding, where a website
 // points its own domain at 127.0.0.1 to get around CORS). The token is
 // stripped before forwarding, because the bridge passes request headers on to
-// Ollama.
+// Ollama. The `model` of every /api/chat request is set to OLLAMA_MODEL.
 //
 // The bridge is started as a child process and must listen on
 // 127.0.0.1:API_GUARD_UPSTREAM_PORT so this proxy is the only way in. The
@@ -29,6 +29,10 @@ const ALLOWED_HOSTS = new Set(
     .filter(Boolean),
 );
 const MIN_TOKEN_LENGTH = 32;
+// The model is server config, not a per-request choice: every /api/chat request is
+// pinned to OLLAMA_MODEL, the model scripts/model-preflight.js verified at startup.
+const MODEL = process.env.OLLAMA_MODEL || "llama3.1";
+const MAX_CHAT_BODY_BYTES = 10 * 1024 * 1024;
 
 function log(message) {
   process.stderr.write(`[api-guard] ${message}\n`);
@@ -85,14 +89,8 @@ function reject(req, res, status, reason) {
   res.end(JSON.stringify({ error: reason }));
 }
 
-const server = http.createServer((req, res) => {
-  const host = (req.headers.host || "").toLowerCase();
-  if (!ALLOWED_HOSTS.has(host)) return reject(req, res, 403, "host not allowed");
-  if (!isAuthorized(req.headers.authorization)) return reject(req, res, 401, "missing or invalid bearer token");
-
-  const headers = { ...req.headers };
-  delete headers.authorization;
-
+// Forwards to the bridge; `body` replaces the request body when given, otherwise it is streamed.
+function forward(req, res, headers, body) {
   const upstreamReq = http.request(
     { host: "127.0.0.1", port: UPSTREAM_PORT, method: req.method, path: req.url, headers },
     (upstreamRes) => {
@@ -114,11 +112,66 @@ const server = http.createServer((req, res) => {
     if (!res.writableFinished) upstreamReq.destroy();
   });
 
-  req.pipe(upstreamReq);
+  if (body) upstreamReq.end(body);
+  else req.pipe(upstreamReq);
+}
+
+// Buffers an /api/chat body and sets its model to OLLAMA_MODEL before forwarding.
+function forwardChat(req, res, headers) {
+  const chunks = [];
+  let size = 0;
+  let tooLarge = false;
+  req.on("data", (chunk) => {
+    if (tooLarge) return;
+    size += chunk.length;
+    if (size > MAX_CHAT_BODY_BYTES) {
+      tooLarge = true;
+      reject(req, res, 413, "request body too large");
+      return;
+    }
+    chunks.push(chunk);
+  });
+  req.on("end", () => {
+    if (tooLarge) return;
+    let payload;
+    try {
+      payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    } catch {
+      payload = undefined;
+    }
+    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+      return reject(req, res, 400, "body must be a JSON object");
+    }
+    if (payload.model !== undefined && payload.model !== MODEL) {
+      log(`replaced requested model "${payload.model}" with OLLAMA_MODEL "${MODEL}"`);
+    }
+    payload.model = MODEL;
+
+    const body = Buffer.from(JSON.stringify(payload));
+    delete headers["transfer-encoding"];
+    headers["content-length"] = String(body.length);
+    forward(req, res, headers, body);
+  });
+}
+
+const server = http.createServer((req, res) => {
+  const host = (req.headers.host || "").toLowerCase();
+  if (!ALLOWED_HOSTS.has(host)) return reject(req, res, 403, "host not allowed");
+  if (!isAuthorized(req.headers.authorization)) return reject(req, res, 401, "missing or invalid bearer token");
+
+  const headers = { ...req.headers };
+  delete headers.authorization;
+
+  const pathname = req.url.split("?")[0];
+  if (req.method === "POST" && pathname === "/api/chat") return forwardChat(req, res, headers);
+  forward(req, res, headers);
 });
 
 // Agent runs (scan + LLM + GitHub calls) can exceed Node's default 5-minute limit.
 server.requestTimeout = 0;
 server.listen(LISTEN_PORT, "0.0.0.0", () => {
-  log(`listening on :${LISTEN_PORT}, forwarding to 127.0.0.1:${UPSTREAM_PORT}, hosts [${[...ALLOWED_HOSTS].join(", ")}]`);
+  log(
+    `listening on :${LISTEN_PORT}, forwarding to 127.0.0.1:${UPSTREAM_PORT}, ` +
+      `hosts [${[...ALLOWED_HOSTS].join(", ")}], model ${MODEL}`,
+  );
 });

@@ -7,8 +7,12 @@ services:
       - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
-      - OLLAMA_URL=http://host.docker.internal:11434
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      # Ollama server: the same machine by default, or a private-network address such as
+      # http://ollama.internal:11434 in your VPC. Never a public endpoint: prompts carry source code.
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_HOST=${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Any Ollama model with tool-calling support. Override: OLLAMA_MODEL=qwen2.5:7b-instruct docker compose up -d
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
       - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN} # Loaded from your local .env file
       # The bridge has no auth and defaults to CORS "*", letting any website you visit drive
       # the agent through your browser. There is no browser client, so allow no foreign origins.
@@ -19,10 +23,12 @@ services:
       - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # model-preflight exits the container if OLLAMA_MODEL can't make tool calls.
     # api-guard owns port 8000 and authenticates every request; the bridge listens only on
     # 127.0.0.1:8001 inside the container, so it cannot be reached around the guard.
     command: >
-      /bin/sh -c "exec node /app/api-guard/api-guard.js --
+      /bin/sh -c "node /app/scripts/model-preflight.js &&
+      exec node /app/api-guard/api-guard.js --
       ollama-mcp-bridge
       --config /app/mcp-config.json
       --host 127.0.0.1
