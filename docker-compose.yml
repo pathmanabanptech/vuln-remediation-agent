@@ -13,6 +13,10 @@ services:
       - OLLAMA_HOST=${OLLAMA_URL:-http://host.docker.internal:11434}
       # Any Ollama model with tool-calling support. Override: OLLAMA_MODEL=qwen2.5:7b-instruct docker compose up -d
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      # Context window (tokens). Ollama's 4096 default is smaller than one Trivy findings list.
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-16384}
+      # Cap on tool-call rounds per request, so a model stuck retrying can't loop forever.
+      - MAX_TOOL_ROUNDS=${MAX_TOOL_ROUNDS:-15}
       - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN} # Loaded from your local .env file
       # The bridge has no auth and defaults to CORS "*", letting any website you visit drive
       # the agent through your browser. There is no browser client, so allow no foreign origins.

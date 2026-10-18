@@ -68,6 +68,12 @@ async function request(method, path, body) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {
+    if (err.name === "TimeoutError") {
+      fail(
+        `Ollama at ${OLLAMA_URL} did not answer ${path} within ${TIMEOUT_MS / 1000}s.`,
+        `${MODEL} may be too large for the server's memory or still loading; try a smaller model or raise PREFLIGHT_TIMEOUT_SECONDS.`,
+      );
+    }
     fail(`Cannot reach Ollama at ${OLLAMA_URL} (${err.cause?.code || err.name}).`, "Is `ollama serve` running?");
   }
   const text = await response.text();
@@ -117,7 +123,8 @@ async function main() {
   const chat = await request("POST", "/api/chat", {
     model: MODEL,
     stream: false,
-    options: { temperature: 0, seed: 42 },
+    // Same context size as api-guard, so Ollama loads the model once with the size real runs use.
+    options: { temperature: 0, seed: 42, num_ctx: Number(process.env.OLLAMA_NUM_CTX || 16384) },
     messages: [
       { role: "user", content: `Call the ${TOOL_NAME} tool with a=2 and b=3. Do not answer in text.` },
     ],

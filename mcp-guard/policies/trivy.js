@@ -41,7 +41,7 @@ module.exports = {
 
     const scanTypes = args.scanType;
     if (!Array.isArray(scanTypes) || scanTypes.length === 0 || scanTypes.some((t) => t !== "vuln")) {
-      return 'scanType must be ["vuln"]';
+      return 'scanType must be the JSON array ["vuln"]';
     }
 
     args.target = target; // forward the resolved path so the check and the scan agree

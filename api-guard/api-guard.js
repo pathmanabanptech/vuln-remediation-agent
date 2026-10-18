@@ -32,6 +32,9 @@ const MIN_TOKEN_LENGTH = 32;
 // The model is server config, not a per-request choice: every /api/chat request is
 // pinned to OLLAMA_MODEL, the model scripts/model-preflight.js verified at startup.
 const MODEL = process.env.OLLAMA_MODEL || "llama3.1";
+// Ollama's default context (4096 tokens) is smaller than one findings_list result; when it
+// overflows, Ollama drops the oldest messages, starting with the system prompt.
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 16384);
 const MAX_CHAT_BODY_BYTES = 10 * 1024 * 1024;
 
 function log(message) {
@@ -146,6 +149,8 @@ function forwardChat(req, res, headers) {
       log(`replaced requested model "${payload.model}" with OLLAMA_MODEL "${MODEL}"`);
     }
     payload.model = MODEL;
+    const options = payload.options !== null && typeof payload.options === "object" ? payload.options : {};
+    payload.options = { ...options, num_ctx: options.num_ctx ?? NUM_CTX };
 
     const body = Buffer.from(JSON.stringify(payload));
     delete headers["transfer-encoding"];
@@ -172,6 +177,6 @@ server.requestTimeout = 0;
 server.listen(LISTEN_PORT, "0.0.0.0", () => {
   log(
     `listening on :${LISTEN_PORT}, forwarding to 127.0.0.1:${UPSTREAM_PORT}, ` +
-      `hosts [${[...ALLOWED_HOSTS].join(", ")}], model ${MODEL}`,
+      `hosts [${[...ALLOWED_HOSTS].join(", ")}], model ${MODEL}, num_ctx ${NUM_CTX}`,
   );
 });

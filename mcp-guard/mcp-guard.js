@@ -4,7 +4,8 @@
 //
 // Tools not in the selected policy are hidden from tools/list and rejected on
 // tools/call. Each allowed tool has an argument check that returns an error
-// string to deny, or null to allow (it may normalize arguments in place).
+// string to deny, or null to allow (it may normalize arguments in place). Checks
+// may be async and read upstream state through the callUpstream helper they receive.
 // See policies/ for what each server is allowed to do.
 //
 // Usage: node mcp-guard.js <policy> -- <upstream command> [args...]
@@ -58,6 +59,46 @@ upstream.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 // Ids of in-flight tools/list requests whose responses must be filtered.
 const pendingToolLists = new Set();
 
+// Input schemas of allowed tools, captured from tools/list responses.
+const toolSchemas = new Map();
+
+// Small models often send typed arguments as strings: "['vuln']" or "vuln,secret"
+// for an array, "true" for a boolean. Convert those to the type the tool's schema
+// declares, before the policy checks the result.
+function coerce(value, type) {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (type === "boolean" && /^(true|false)$/i.test(text)) return text.toLowerCase() === "true";
+  if ((type === "number" || type === "integer") && text !== "" && Number.isFinite(Number(text))) return Number(text);
+  if (type === "array") {
+    for (const candidate of [text, text.replace(/'/g, '"')]) {
+      const parsed = parse(candidate);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    return text
+      .replace(/^\[|\]$/g, "")
+      .split(",")
+      .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+      .filter(Boolean);
+  }
+  return value;
+}
+
+// Returns a description of each argument that was converted.
+function coerceArguments(name, args) {
+  const properties = toolSchemas.get(name)?.properties;
+  if (!properties) return [];
+  const changed = [];
+  for (const [key, value] of Object.entries(args)) {
+    const coerced = coerce(value, properties[key]?.type);
+    if (coerced !== value) {
+      args[key] = coerced;
+      changed.push(`${key}: ${JSON.stringify(value)} -> ${JSON.stringify(coerced)}`);
+    }
+  }
+  return changed;
+}
+
 // tools/call requests are sent upstream one at a time: trivy-mcp v0.0.20
 // crashes ("concurrent map writes") on overlapping scans, taking the server
 // down for the session. A call waits here until the previous one is answered.
@@ -69,6 +110,25 @@ function dispatchNextCall() {
   const call = queuedCalls.shift();
   inFlightCallId = call.id;
   send(upstream.stdin, call);
+}
+
+// Calls the guard makes itself (e.g. reading the current file before allowing a
+// commit). They share the queue above, and their responses never reach the client.
+const pendingInternalCalls = new Map();
+let internalCallCount = 0;
+
+function callUpstream(name, args) {
+  return new Promise((resolve) => {
+    const id = `mcp-guard-internal-${++internalCallCount}`;
+    pendingInternalCalls.set(id, resolve);
+    queuedCalls.push({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+    dispatchNextCall();
+  });
+}
+
+function deny(message, name, reason, code) {
+  log(`DENIED tools/call ${name}: ${reason}`);
+  send(process.stdout, { jsonrpc: "2.0", id: message.id, error: { code, message: `Blocked by mcp-guard: ${reason}` } });
 }
 
 // A cancelled call that is still queued never reaches upstream. A cancelled
@@ -110,21 +170,25 @@ readline.createInterface({ input: process.stdin, crlfDelay: Infinity }).on("line
       return;
     }
     const name = message.params?.name;
-    const args = message.params?.arguments ?? {};
-    const policy = Object.hasOwn(ALLOWED_TOOLS, name) ? ALLOWED_TOOLS[name] : undefined;
-    const denial = policy ? policy(args) : `tool '${name}' is not permitted (allowlist)`;
-    if (denial) {
-      log(`DENIED tools/call ${name}: ${denial}`);
-      send(process.stdout, {
-        jsonrpc: "2.0",
-        id: message.id,
-        error: { code: policy ? -32602 : -32601, message: `Blocked by mcp-guard: ${denial}` },
-      });
-      return;
+    if (typeof message.params?.arguments === "string") message.params.arguments = parse(message.params.arguments);
+    if (message.params && (typeof message.params.arguments !== "object" || message.params.arguments === null)) {
+      message.params.arguments = {};
     }
-    log(`allowed tools/call ${name}`);
-    queuedCalls.push(message);
-    dispatchNextCall();
+    const args = message.params?.arguments ?? {};
+    const coerced = coerceArguments(name, args);
+    if (coerced.length > 0) log(`coerced ${name} arguments: ${coerced.join("; ")}`);
+    const policy = Object.hasOwn(ALLOWED_TOOLS, name) ? ALLOWED_TOOLS[name] : undefined;
+    if (!policy) return deny(message, name, `tool '${name}' is not permitted (allowlist)`, -32601);
+    // Policies may be async (they can read upstream state via callUpstream); errors deny.
+    Promise.resolve()
+      .then(() => policy(args, { callUpstream }))
+      .catch((err) => `policy check failed: ${err.message}`)
+      .then((denial) => {
+        if (denial) return deny(message, name, denial, -32602);
+        log(`allowed tools/call ${name}`);
+        queuedCalls.push(message);
+        dispatchNextCall();
+      });
     return;
   }
 
@@ -144,9 +208,16 @@ readline.createInterface({ input: upstream.stdout, crlfDelay: Infinity }).on("li
   const isResponse = message && !Array.isArray(message) && message.method === undefined;
   if (isResponse && pendingToolLists.delete(message.id) && Array.isArray(message.result?.tools)) {
     message.result.tools = message.result.tools.filter((tool) => Object.hasOwn(ALLOWED_TOOLS, tool.name));
+    for (const tool of message.result.tools) toolSchemas.set(tool.name, tool.inputSchema);
   }
 
-  send(process.stdout, message);
+  if (isResponse && pendingInternalCalls.has(message.id)) {
+    const resolve = pendingInternalCalls.get(message.id);
+    pendingInternalCalls.delete(message.id);
+    resolve(message);
+  } else {
+    send(process.stdout, message);
+  }
 
   if (isResponse && inFlightCallId !== null && message.id === inFlightCallId) {
     inFlightCallId = null;
