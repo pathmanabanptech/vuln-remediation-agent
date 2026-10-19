@@ -1,0 +1,10 @@
+{
+  "clinic": "Riverside Family Health (fictional)",
+  "appointments": [
+    { "id": "SYN-1001", "patient": "Jordan Ellis", "mrn": "SYN-000431", "time": "09:00", "provider": "Dr. Avery Lin", "type": "Annual physical", "status": "Checked in" },
+    { "id": "SYN-1002", "patient": "Priya Raman", "mrn": "SYN-000872", "time": "09:30", "provider": "Dr. Avery Lin", "type": "Follow-up: lab results", "status": "Scheduled" },
+    { "id": "SYN-1003", "patient": "Marcus Bell", "mrn": "SYN-001205", "time": "10:15", "provider": "Dr. Sam Okafor", "type": "Telehealth consult", "status": "Scheduled" },
+    { "id": "SYN-1004", "patient": "Elena Novak", "mrn": "SYN-000318", "time": "11:00", "provider": "Dr. Sam Okafor", "type": "Vaccination", "status": "Scheduled" },
+    { "id": "SYN-1005", "patient": "Theo Grant", "mrn": "SYN-002047", "time": "13:30", "provider": "Dr. Avery Lin", "type": "Prescription renewal", "status": "Cancelled" }
+  ]
+}

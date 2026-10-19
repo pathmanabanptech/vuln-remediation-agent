@@ -12,6 +12,6 @@ curl -s -X POST http://localhost:8000/api/chat \
   -H "Authorization: Bearer $AGENT_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [{"role": "user", "content": "Run a security audit and fix only the axios vulnerability: one branch and one pull request."}],
+    "messages": [{"role": "user", "content": "Run a security audit and fix the most severe vulnerability in a direct dependency: one branch and one pull request."}],
     "stream": false
   }' | jq '.message.content'

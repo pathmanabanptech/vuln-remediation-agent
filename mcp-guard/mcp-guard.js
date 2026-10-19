@@ -112,6 +112,10 @@ function dispatchNextCall() {
   send(upstream.stdin, call);
 }
 
+// Tool name of each allowed client call awaiting its result, so a policy's
+// optional transformResult(result) can post-process it before the client sees it.
+const clientCallTools = new Map();
+
 // Calls the guard makes itself (e.g. reading the current file before allowing a
 // commit). They share the queue above, and their responses never reach the client.
 const pendingInternalCalls = new Map();
@@ -138,6 +142,7 @@ function dropQueuedCall(requestId) {
   const index = queuedCalls.findIndex((call) => call.id === requestId);
   if (index === -1) return false;
   queuedCalls.splice(index, 1);
+  clientCallTools.delete(requestId);
   return true;
 }
 
@@ -186,6 +191,7 @@ readline.createInterface({ input: process.stdin, crlfDelay: Infinity }).on("line
       .then((denial) => {
         if (denial) return deny(message, name, denial, -32602);
         log(`allowed tools/call ${name}`);
+        clientCallTools.set(message.id, name);
         queuedCalls.push(message);
         dispatchNextCall();
       });
@@ -216,6 +222,19 @@ readline.createInterface({ input: upstream.stdout, crlfDelay: Infinity }).on("li
     pendingInternalCalls.delete(message.id);
     resolve(message);
   } else {
+    const toolName = isResponse ? clientCallTools.get(message.id) : undefined;
+    if (toolName !== undefined) {
+      clientCallTools.delete(message.id);
+      const transform = ALLOWED_TOOLS[toolName].transformResult;
+      if (transform && message.result) {
+        try {
+          const note = transform(message.result);
+          if (note) log(`post-processed ${toolName} result: ${note}`);
+        } catch (err) {
+          log(`could not post-process ${toolName} result: ${err.message}`);
+        }
+      }
+    }
     send(process.stdout, message);
   }
 
