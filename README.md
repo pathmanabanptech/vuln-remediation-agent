@@ -96,6 +96,25 @@ As a cloud-native solution, this agent can be scaled across various environments
 - **On-Prem Kubernetes:** Deployed as a sidecar to CI/CD runners (Jenkins/GitLab) to provide real-time remediation during the build phase.
 
 
+## Use it on another repository
+The target repository is configuration, not code: nothing in the agent names a repository. By default it remediates this repo's demo app (`my-demo-app`). To point it at your own npm project:
+
+1. Clone your repository next to this one and check out its base branch.
+2. Create a fine-grained GitHub token scoped to **that repository only** (Contents and Pull requests: read/write).
+3. Set the target in `.env`:
+   ```
+   GITHUB_TOKEN=<token for your repository>
+   TARGET_REPO=your-org/your-repo
+   TARGET_BRANCH=main
+   TARGET_PATH=.             # directory containing package.json ("." for the repository root)
+   TARGET_DIR=../your-repo   # your local clone; mounted read-only and scanned
+   ```
+4. Run `docker compose up -d --force-recreate`.
+
+At startup the agent fills these values into its prompt ([`agent_prompt.md`](./agent_prompt.md) is a template), scans `TARGET_DIR/TARGET_PATH`, and opens PRs against `TARGET_REPO`. The guard rejects GitHub calls for any other repository, even if the token could reach it.
+
+**Current scope:** npm projects with one `package.json` per target. Other ecosystems, monorepos, and fixes grouped across packages are on the [roadmap](./docs/bounded-network-plan.md).
+
 ## Ollama location
 By default the agent uses Ollama on the Docker host (`http://host.docker.internal:11434`). To use an Ollama server elsewhere in your private network, set `OLLAMA_URL` in `.env` or per run:
 ```bash

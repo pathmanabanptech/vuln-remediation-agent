@@ -6,7 +6,7 @@
         "GitHub = HUMAN-IN-THE-LOOP ENFORCEMENT: the agent may only read files, create a security/fix-* branch, commit to it, and open a",
         "pull request; a human must review and merge. agent_prompt.md's instruction to 'open a PR' is NOT a control: an LLM can ignore it.",
         "@modelcontextprotocol/server-github has no allowlist of its own; the guard blocks merge_pull_request, push_files [force-pushes],",
-        "fork/create repository, etc., and any write to a branch outside security/fix-*.",
+        "fork/create repository, etc., any write to a branch outside security/fix-*, and any call for a repository other than TARGET_REPO.",
         "Trivy = LEAST PRIVILEGE: only vulnerability scans of MCP_GUARD_SCAN_ROOT. scan_repository and scan_image (arbitrary remote fetches)",
         "are blocked, as are scans of other paths and the secret/misconfig/license scanners."
     ],
@@ -20,7 +20,7 @@
                 "trivy", "mcp", "--transport", "stdio"
             ],
             "env": {
-                "MCP_GUARD_SCAN_ROOT": "${workspaceFolder}/my-demo-app"
+                "MCP_GUARD_SCAN_ROOT": "/workspace/target/${env:TARGET_PATH}"
             },
             "toolFilter": {
                 "mode": "include",
@@ -36,7 +36,8 @@
             ],
             "_comment_env": "The bridge passes MCP servers only HOME/PATH/etc., so the token must be forwarded explicitly, to this server only (Trivy never sees it).",
             "env": {
-                "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+                "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PERSONAL_ACCESS_TOKEN}",
+                "MCP_GUARD_GITHUB_REPO": "${env:TARGET_REPO}"
             },
             "toolFilter": {
                 "mode": "include",

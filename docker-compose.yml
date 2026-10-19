@@ -23,19 +23,29 @@ services:
       - CORS_ORIGINS=http://localhost:8000
       # Required by api-guard: callers must send "Authorization: Bearer <token>".
       - AGENT_API_TOKEN=${AGENT_API_TOKEN}
+      # Repository to remediate (defaults: this repo's demo app). The GitHub token must be
+      # scoped to TARGET_REPO; the guard rejects GitHub calls for any other repository.
+      - TARGET_REPO=${TARGET_REPO:-pathmanabanptech/vuln-remediation-agent}
+      - TARGET_BRANCH=${TARGET_BRANCH:-main}
+      # Directory containing package.json, relative to the repository root ("." for the root).
+      - TARGET_PATH=${TARGET_PATH:-my-demo-app}
     volumes:
       - .:/app
+      # Local checkout of TARGET_REPO, scanned read-only. Point TARGET_DIR at another clone.
+      - ${TARGET_DIR:-.}:/workspace/target:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # model-preflight exits the container if OLLAMA_MODEL can't make tool calls.
+    # render-prompt fills the target settings into agent_prompt.md (and fails on bad settings).
     # api-guard owns port 8000 and authenticates every request; the bridge listens only on
     # 127.0.0.1:8001 inside the container, so it cannot be reached around the guard.
     command: >
       /bin/sh -c "node /app/scripts/model-preflight.js &&
+      PROMPT=$$(node /app/scripts/render-prompt.js) &&
       exec node /app/api-guard/api-guard.js --
       ollama-mcp-bridge
       --config /app/mcp-config.json
       --host 127.0.0.1
       --port 8001
-      --system-prompt \"$(cat /app/agent_prompt.md)\""
+      --system-prompt \"$$PROMPT\""
 

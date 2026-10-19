@@ -4,7 +4,8 @@
 // branch, and open a pull request. A human must review and merge. Everything
 // else (merge_pull_request, push_files [force-pushes], fork/create repo,
 // issue/review writes, ...) is denied. Writes are restricted to
-// `security/fix-*` branches so the agent can never commit directly to main.
+// `security/fix-*` branches so the agent can never commit directly to main,
+// and every call must target the configured repository (MCP_GUARD_GITHUB_REPO).
 //
 // Commits to package.json may only change versions of dependencies that are
 // already listed: the guard reads the current file from the branch and rejects
@@ -84,7 +85,20 @@ async function checkPackageJsonCommit(args, proposed, callUpstream) {
   return null;
 }
 
-module.exports = {
+// One repository per deployment: TARGET_REPO, passed in as MCP_GUARD_GITHUB_REPO.
+// A token that can reach other repositories still can't be used on them.
+function repoDenial(args) {
+  const allowed = (process.env.MCP_GUARD_GITHUB_REPO || "").trim().toLowerCase();
+  if (!/^[^/\s]+\/[^/\s]+$/.test(allowed)) return "MCP_GUARD_GITHUB_REPO is not set to owner/name";
+  const requested = `${args.owner}/${args.repo}`.toLowerCase();
+  return requested === allowed ? null : `only the configured repository ${allowed} may be used, not ${requested}`;
+}
+
+function lockedToRepo(check) {
+  return (args, context) => repoDenial(args) || check(args, context);
+}
+
+const checks = {
   get_file_contents: () => null, // read-only, needed to edit package.json
   create_branch: (args) =>
     isAgentBranch(args.branch) ? null : "branch must match security/fix-<package>",
@@ -108,3 +122,5 @@ module.exports = {
   create_pull_request: (args) =>
     isAgentBranch(args.head) ? null : "PR head must be a security/fix-* branch",
 };
+
+module.exports = Object.fromEntries(Object.entries(checks).map(([name, check]) => [name, lockedToRepo(check)]));
