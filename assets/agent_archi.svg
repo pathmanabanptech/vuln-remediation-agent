@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1160" viewBox="0 0 1800 1160" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2d3748"/>
+    </marker>
+    <marker id="arrow-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c53030"/>
+    </marker>
+    <style>
+      .title { font-size: 26px; font-weight: 700; fill: #1a202c; }
+      .subtitle { font-size: 15px; fill: #4a5568; }
+      .h { font-size: 17px; font-weight: 700; fill: #1a202c; }
+      .t { font-size: 13.5px; fill: #2d3748; }
+      .small { font-size: 12.5px; fill: #4a5568; }
+      .label { font-size: 12.5px; fill: #2d3748; }
+      .ext-label { font-size: 12.5px; fill: #c53030; }
+      .zone { font-size: 14px; font-weight: 700; }
+      .box { fill: #ffffff; stroke: #4a5568; stroke-width: 1.5; }
+      .guard { fill: #fff7e6; stroke: #c47f00; stroke-width: 2; }
+      .tool { fill: #f0f4f8; stroke: #4a5568; stroke-width: 1.5; }
+      .ext { fill: #f7f7f7; stroke: #8a8a8a; stroke-width: 1.5; }
+      .flow { stroke: #2d3748; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .flow2 { stroke: #2d3748; stroke-width: 2; fill: none; marker-end: url(#arrow); marker-start: url(#arrow); }
+      .extflow { stroke: #c53030; stroke-width: 2; stroke-dasharray: 7 5; fill: none; marker-end: url(#arrow-ext); }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1160" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="40" y="50" class="title">vuln-remediation-agent: architecture</text>
+  <text x="40" y="76" class="subtitle">Self-hosted LLM agent that scans a repository with Trivy and proposes dependency fixes as GitHub pull requests for human review.</text>
+
+  <!-- Secure network boundary -->
+  <rect x="290" y="100" width="1130" height="915" rx="14" fill="#f6fbf7" stroke="#2f855a" stroke-width="2.5" stroke-dasharray="10 6"/>
+  <text x="308" y="126" class="zone" fill="#2f855a">Secure network boundary · workstation / on-prem / private cloud VPC</text>
+
+  <!-- Docker container -->
+  <rect x="320" y="145" width="790" height="705" rx="10" fill="#eef5fb" stroke="#2b6cb0" stroke-width="2"/>
+  <text x="338" y="171" class="zone" fill="#2b6cb0">Docker container · vuln-remediation-agent</text>
+
+  <!-- Startup strip -->
+  <rect x="345" y="185" width="740" height="52" rx="8" class="box" stroke-dasharray="5 4"/>
+  <text x="362" y="207" class="h" font-size="14.5">Startup</text>
+  <text x="362" y="227" class="t">model-preflight: OLLAMA_MODEL must make a real tool call · render-prompt: TARGET_* settings → system prompt</text>
+
+  <!-- api-guard -->
+  <rect x="345" y="258" width="740" height="72" rx="8" class="guard"/>
+  <text x="362" y="284" class="h">api-guard  ·  :8000</text>
+  <text x="362" y="308" class="t">Bearer token (AGENT_API_TOKEN) · Host-header check · sets model = OLLAMA_MODEL and 16K context</text>
+
+  <!-- bridge -->
+  <rect x="345" y="360" width="740" height="82" rx="8" class="box"/>
+  <text x="362" y="386" class="h">ollama-mcp-bridge  ·  127.0.0.1:8001 (not reachable from outside)</text>
+  <text x="362" y="410" class="t">System prompt · tool-call loop (MAX_TOOL_ROUNDS = 15) · toolFilter allowlist</text>
+  <text x="362" y="430" class="small">Sends each tool call to the matching MCP server over stdio</text>
+
+  <!-- mcp-guard: trivy -->
+  <rect x="345" y="478" width="350" height="118" rx="8" class="guard"/>
+  <text x="360" y="502" class="h">mcp-guard · Trivy policy</text>
+  <text x="360" y="525" class="t">Tools: scan_filesystem, findings only</text>
+  <text x="360" y="545" class="t">Scan root only · vulnerability scanner only</text>
+  <text x="360" y="565" class="t">Findings narrowed to direct dependencies</text>
+  <text x="360" y="585" class="t">One call at a time · argument type repair</text>
+
+  <!-- mcp-guard: github -->
+  <rect x="735" y="478" width="350" height="118" rx="8" class="guard"/>
+  <text x="750" y="502" class="h">mcp-guard · GitHub policy</text>
+  <text x="750" y="525" class="t">4 tools: read file, branch, commit, open PR</text>
+  <text x="750" y="545" class="t">security/fix-* branches · TARGET_REPO only</text>
+  <text x="750" y="565" class="t">package.json: version changes only</text>
+  <text x="750" y="585" class="t">No merge, force-push, delete or admin</text>
+
+  <!-- MCP servers -->
+  <rect x="345" y="626" width="350" height="70" rx="8" class="tool"/>
+  <text x="360" y="652" class="h" font-size="15.5">Trivy MCP plugin + Trivy</text>
+  <text x="360" y="676" class="small">Version-pinned, SHA-256 verified at build</text>
+
+  <rect x="735" y="626" width="350" height="70" rx="8" class="tool"/>
+  <text x="750" y="652" class="h" font-size="15.5">GitHub MCP server</text>
+  <text x="750" y="676" class="small">Only process that holds the GitHub token</text>
+
+  <!-- Target checkout -->
+  <rect x="345" y="742" width="250" height="88" rx="8" class="box"/>
+  <path d="M345,758 h250" stroke="#4a5568" stroke-width="1"/>
+  <text x="360" y="782" class="h" font-size="15">Target repo checkout</text>
+  <text x="360" y="802" class="small">/workspace/target (read-only)</text>
+  <text x="360" y="820" class="small">TARGET_DIR / TARGET_PATH</text>
+
+  <!-- Ollama -->
+  <rect x="1190" y="330" width="215" height="160" rx="10" fill="#eefaf0" stroke="#2f855a" stroke-width="2"/>
+  <text x="1204" y="358" class="h">Ollama (self-hosted)</text>
+  <text x="1204" y="382" class="t">OLLAMA_URL: same host,</text>
+  <text x="1204" y="400" class="t">on-prem or private VPC</text>
+  <text x="1204" y="424" class="t">qwen2.5:7b-instruct</text>
+  <text x="1204" y="442" class="t">(or any tool-calling model)</text>
+  <text x="1204" y="466" class="small">Code never leaves the boundary</text>
+
+  <!-- Caller -->
+  <rect x="40" y="240" width="210" height="100" rx="10" class="box"/>
+  <text x="56" y="270" class="h">Caller</text>
+  <text x="56" y="294" class="t">test-agent.sh, curl or CI</text>
+  <text x="56" y="314" class="small">"Run a security audit</text>
+  <text x="56" y="330" class="small">and fix a vulnerability"</text>
+  <text x="40" y="368" class="label">POST /api/chat</text>
+  <text x="40" y="386" class="label">Bearer token · 127.0.0.1:8000</text>
+
+  <!-- External: GitHub -->
+  <rect x="1480" y="580" width="290" height="160" rx="10" class="ext"/>
+  <text x="1496" y="608" class="h">GitHub · TARGET_REPO</text>
+  <text x="1496" y="634" class="t">Branch security/fix-&lt;package&gt;</text>
+  <text x="1496" y="656" class="t">Commit: package.json</text>
+  <text x="1496" y="678" class="t">Pull request → base branch</text>
+  <text x="1496" y="710" class="small">Fine-grained token, this repo only</text>
+  <text x="1496" y="728" class="small">(Contents + Pull requests)</text>
+
+  <!-- External: human reviewer -->
+  <rect x="1480" y="830" width="290" height="96" rx="10" fill="#fff1f0" stroke="#c53030" stroke-width="2"/>
+  <text x="1496" y="858" class="h">Human reviewer</text>
+  <text x="1496" y="882" class="t">Verifies the fix (tests, build, re-scan)</text>
+  <text x="1496" y="902" class="t">and merges: the agent never can</text>
+
+  <!-- External downloads -->
+  <rect x="520" y="1048" width="300" height="72" rx="10" class="ext"/>
+  <text x="536" y="1076" class="h" font-size="15">Trivy vulnerability DB</text>
+  <text x="536" y="1098" class="small">mirror.gcr.io · downloaded on first scan</text>
+
+  <rect x="880" y="1048" width="300" height="72" rx="10" class="ext"/>
+  <text x="896" y="1076" class="h" font-size="15">npm registry</text>
+  <text x="896" y="1098" class="small">GitHub MCP server fetched at startup</text>
+
+  <!-- Flows -->
+  <path d="M250,290 H343" class="flow"/>
+  <path d="M715,330 V358" class="flow"/>
+  <path d="M520,442 V476" class="flow"/>
+  <path d="M910,442 V476" class="flow"/>
+  <path d="M520,596 V624" class="flow"/>
+  <path d="M910,596 V624" class="flow"/>
+  <path d="M470,696 V740" class="flow"/>
+  <text x="478" y="724" class="label">reads (read-only)</text>
+  <path d="M1087,401 H1188" class="flow2"/>
+  <text x="1100" y="391" class="label">chat + tools</text>
+  <path d="M1085,661 H1478" class="flow"/>
+  <text x="1150" y="652" class="label">GitHub API: read, branch, commit, open PR</text>
+  <path d="M1625,828 V742" class="flow"/>
+  <text x="1633" y="792" class="label">review &amp; merge</text>
+  <text x="1633" y="809" class="label">(human-in-the-loop)</text>
+
+  <path d="M660,696 V1046" class="extflow"/>
+  <text x="668" y="985" class="ext-label">vulnerability DB</text>
+  <path d="M1010,696 V1046" class="extflow"/>
+  <text x="1018" y="985" class="ext-label">npx download</text>
+
+  <!-- Legend -->
+  <rect x="40" y="760" width="230" height="250" rx="10" fill="#ffffff" stroke="#cbd5e0" stroke-width="1.5"/>
+  <text x="56" y="786" class="h" font-size="15">Legend</text>
+  <path d="M56,812 H106" class="flow"/>
+  <text x="116" y="816" class="small">Request / data flow</text>
+  <path d="M56,842 H106" class="extflow"/>
+  <text x="116" y="846" class="small">Public download</text>
+  <text x="116" y="862" class="small">(roadmap: internal mirror)</text>
+  <rect x="56" y="880" width="40" height="22" rx="4" class="guard"/>
+  <text x="106" y="896" class="small">Guardrail (enforced in code)</text>
+  <rect x="56" y="914" width="40" height="22" rx="4" fill="#f6fbf7" stroke="#2f855a" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="106" y="930" class="small">Secure network boundary</text>
+  <rect x="56" y="948" width="40" height="22" rx="4" class="ext"/>
+  <text x="106" y="964" class="small">Outside the boundary</text>
+  <text x="56" y="996" class="small">HITL: agent opens PRs only</text>
+</svg>
